@@ -30,7 +30,7 @@ class BooksSpider(scrapy.Spider):
 
         next_page = response.css("li.next a::attr(href)").get()
         if next_page:
-            response.follow(next_page, callback=self.parse)
+            yield response.follow(next_page, callback=self.parse)
 
     @staticmethod
     def parse_book(response: Response) -> BookItem:
@@ -43,7 +43,9 @@ class BooksSpider(scrapy.Spider):
             num_availability
         ) if num_availability else 0
 
-        item["category"] = response.css("ul.breadcrumb li a::text").getall()[2]
+        breadcrumb_element = response.css("ul.breadcrumb li a::text").getall()
+        if len(breadcrumb_element) > 2:
+            item["category"] = breadcrumb_element[2]
 
         item["description"] = response.xpath(
             "//div[@id='product_description']/following-sibling::p/text()"
