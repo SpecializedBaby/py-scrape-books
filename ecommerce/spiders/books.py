@@ -1,10 +1,7 @@
-import re
-
 import scrapy
 from scrapy.http import Response
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from twisted.internet.defer import Deferred
+
+from ..items import BookItem
 
 
 class BooksSpider(scrapy.Spider):
@@ -12,62 +9,36 @@ class BooksSpider(scrapy.Spider):
     allowed_domains = ["books.toscrape.com"]
     start_urls = ["https://books.toscrape.com/"]
 
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.driver = webdriver.Chrome()
-
-    def close(self, reason: str) -> Deferred[None] | None:
-        self.driver.quit()
-        return super().close(reason)
-
     def parse(self, response: Response, *args, **kwargs) -> dict:
         for book in response.css(".product_pod"):
-            url_book = response.urljoin(url=book.css("a::attr(href)").get())
-            title = book.css("a::attr(title)").get()
+            item = BookItem()
+            item["title"] = book.css("a::attr(title)").get()
+
             price_class = book.css(".price_color::text").get()
-            price = float(price_class.replace("£", ""))
+            item["price"] = float(price_class.replace("£", ""))
+
             rating_class = book.css(".star-rating::attr(class)").get("")
-            rating = rating_class.split()[-1] if rating_class else None
+            item["rating"] = rating_class.split()[-1] if rating_class else None
 
-            self.driver.get(url_book)
-            yield {
-                "title": title,
-                "price": price,
-                "amount_in_stock": self._parse_amount_in_stock(),
-                "rating": rating,  # Three
-                "category": self._parse_category(),
-                "description": self._parse_description(),
-                "upc": self._parse_upc()
-            }
+            url_book = response.urljoin(url=book.css("a::attr(href)").get())
 
-            next_page = response.css("li.next a::attr(href)").get()
-            if next_page is not None:
-                next_page = response.urljoin(next_page)
-                yield scrapy.Request(next_page, callback=self.parse)
+            yield scrapy.Request(url=url_book, callback=self.parse_book, meta={"book": item})
 
-    def _parse_amount_in_stock(self) -> int:
-        num_availability = self.driver.find_element(
-            By.CSS_SELECTOR,
-            "p.availability"
-        ).text.strip()
-        return int(re.search(r"\d+", num_availability).group())
+        next_page = response.css("li.next a::attr(href)").get()
+        if next_page:
+            response.follow(next_page, callback=self.parse)
 
-    def _parse_category(self) -> str:
-        ul_element = self.driver.find_element(By.CSS_SELECTOR, "ul.breadcrumb")
-        li_elements = ul_element.find_elements(By.TAG_NAME, "li")
-        category = li_elements[2].find_element(By.TAG_NAME, "a").text
-        return str(category)
+    @staticmethod
+    def parse_book(response: Response):
+        item = response.meta["book"]
 
-    def _parse_description(self) -> str:
-        description_element = self.driver.find_element(
-            By.XPATH,
-            "//div[@id='product_description']/following-sibling::p"
-        )
-        return str(description_element.text)
+        num_availability = response.css("p.availability::text").re_first(r"\d+")
+        item["amount_in_stock"] = int(num_availability) if num_availability else 0
 
-    def _parse_upc(self) -> str:
-        table = self.driver.find_element(By.CSS_SELECTOR, "table.table")
-        tbody = table.find_element(By.TAG_NAME, "tbody")
-        tr_elements = tbody.find_elements(By.TAG_NAME, "tr")
-        upc = tr_elements[0].find_element(By.TAG_NAME, "td").text
-        return str(upc)
+        item["category"] = response.css("ul.breadcrumb li a::text").getall()[2]
+
+        item["description"] = response.xpath("//div[@id='product_description']/following-sibling::p/text()").get()
+
+        item["upc"] = response.css("table.table tr td::text").get()
+
+        yield item
