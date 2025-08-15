@@ -22,22 +22,32 @@ class BooksSpider(scrapy.Spider):
 
             url_book = response.urljoin(url=book.css("a::attr(href)").get())
 
-            yield scrapy.Request(url=url_book, callback=self.parse_book, meta={"book": item})
+            yield scrapy.Request(
+                url=url_book,
+                callback=self.parse_book,
+                meta={"book": item}
+            )
 
         next_page = response.css("li.next a::attr(href)").get()
         if next_page:
             response.follow(next_page, callback=self.parse)
 
     @staticmethod
-    def parse_book(response: Response):
+    def parse_book(response: Response) -> BookItem:
         item = response.meta["book"]
 
-        num_availability = response.css("p.availability::text").re_first(r"\d+")
-        item["amount_in_stock"] = int(num_availability) if num_availability else 0
+        num_availability = response.css(
+            "p.availability::text"
+        ).re_first(r"\d+")
+        item["amount_in_stock"] = int(
+            num_availability
+        ) if num_availability else 0
 
         item["category"] = response.css("ul.breadcrumb li a::text").getall()[2]
 
-        item["description"] = response.xpath("//div[@id='product_description']/following-sibling::p/text()").get()
+        item["description"] = response.xpath(
+            "//div[@id='product_description']/following-sibling::p/text()"
+        ).get()
 
         item["upc"] = response.css("table.table tr td::text").get()
 
