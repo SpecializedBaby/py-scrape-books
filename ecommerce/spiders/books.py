@@ -1,8 +1,6 @@
 import re
-from pathlib import Path
 
 import scrapy
-from scrapy import Selector
 from scrapy.http import Response
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -14,7 +12,7 @@ class BooksSpider(scrapy.Spider):
     allowed_domains = ["books.toscrape.com"]
     start_urls = ["https://books.toscrape.com/"]
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.driver = webdriver.Chrome()
 
@@ -22,11 +20,12 @@ class BooksSpider(scrapy.Spider):
         self.driver.quit()
         return super().close(reason)
 
-    def parse(self, response: Response, *args, **kwargs):
+    def parse(self, response: Response, *args, **kwargs) -> dict:
         for book in response.css(".product_pod"):
             url_book = response.urljoin(url=book.css("a::attr(href)").get())
             title = book.css("a::attr(title)").get()
-            price = float(book.css(".price_color::text").get().replace("£", ""))
+            price_class = book.css(".price_color::text").get()
+            price = float(price_class.replace("£", ""))
             rating_class = book.css(".star-rating::attr(class)").get("")
             rating = rating_class.split()[-1] if rating_class else None
 
@@ -54,7 +53,7 @@ class BooksSpider(scrapy.Spider):
         return int(re.search(r"\d+", num_availability).group())
 
     def _parse_category(self) -> str:
-        ul_element = self.driver.find_element(By.CSS_SELECTOR,"ul.breadcrumb")
+        ul_element = self.driver.find_element(By.CSS_SELECTOR, "ul.breadcrumb")
         li_elements = ul_element.find_elements(By.TAG_NAME, "li")
         category = li_elements[2].find_element(By.TAG_NAME, "a").text
         return str(category)
